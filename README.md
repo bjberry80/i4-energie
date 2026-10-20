@@ -6,6 +6,12 @@ An Android Auto app that shows **remaining battery over distance** for your EV w
 
 *Mockup with sample data. Real rendering on the car display looks the same.*
 
+## Why I built this
+
+I've spent 16 years in automotive development, but on the vehicle side, not writing apps. Before my BMW i4 I drove a Tesla for 4.5 years, and the one thing I really missed after switching was Tesla's energy graph: remaining battery over distance, with a live prediction of where you'll arrive.
+
+So I tried to rebuild it. I'm a beginner when it comes to Android, Android Auto and Home Assistant scripting. This project was built with maximum support from AI (Claude): specification, code, debugging in the car, and this documentation. If something looks unusual to experienced developers, that's probably why. Feedback is very welcome.
+
 ## What you see
 
 | Element | Meaning |
