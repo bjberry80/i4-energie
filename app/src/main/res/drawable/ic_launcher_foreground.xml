@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Höhenprofil -->
+    <path
+        android:fillColor="#559E9E9E"
+        android:pathData="M30,72 L38,64 L46,68 L54,54 L62,62 L70,58 L78,66 L78,74 L30,74 Z" />
+    <!-- Ist-Linie (Treppe) -->
+    <path
+        android:strokeColor="#FF4CAF50"
+        android:strokeWidth="4"
+        android:pathData="M30,34 L38,34 L38,40 L46,40 L46,46 L54,46 L54,52" />
+    <!-- Live-Prognose -->
+    <path
+        android:strokeColor="#FFA5D6A7"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M54,52 L78,66" />
+    <!-- Auto-Marker -->
+    <path
+        android:fillColor="#FF4CAF50"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M50,52 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+</vector>

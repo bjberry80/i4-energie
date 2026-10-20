@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- app_name kommt je Build-Typ aus app/build.gradle.kts (resValue). -->
+
+    <!-- Phone-App -->
+    <string name="label_url">Home-Assistant-URL</string>
+    <string name="hint_url">https://xyz.ui.nabu.casa</string>
+    <string name="label_token">Long-Lived Access Token</string>
+    <string name="hint_token">Token einfügen</string>
+    <string name="hint_token_saved">Gespeichert – leer lassen, um ihn zu behalten</string>
+    <string name="btn_save">Speichern</string>
+    <string name="btn_test">Verbindung testen</string>
+    <string name="msg_saved">Gespeichert.</string>
+    <string name="msg_missing">Bitte URL und Token eintragen.</string>
+    <string name="msg_testing">Teste Verbindung …</string>
+    <string name="msg_test_ok">Verbindung OK: API running.</string>
+    <string name="msg_test_fail">Fehler: %1$s</string>
+    <string name="label_status">Letzte Abfrage</string>
+    <string name="status_none">Noch keine Abfrage (startet mit Android Auto).</string>
+    <string name="status_ok">%1$s – OK</string>
+    <string name="status_error">%1$s – Fehler: %2$s</string>
+    <string name="label_help">Android Auto einrichten</string>
+    <string name="help_text">1. Android-Auto-Einstellungen am Handy öffnen.\n2. Ganz unten zehnmal auf „Version“ tippen, um den Entwicklermodus freizuschalten.\n3. Menü (⋮) → „Entwicklereinstellungen“ → „Unbekannte Quellen“ aktivieren.\n4. Handy mit dem Auto verbinden. „i4 Energie“ erscheint im Launcher.\n\nToken: In Home Assistant unter Profil → Sicherheit → „Langlebige Zugriffstoken“ erstellen.</string>
+
+    <!-- Auto-Display -->
+    <string name="car_refresh">Aktualisieren</string>
+    <string name="car_settings">Einstellungen</string>
+    <string name="car_settings_hint">Einstellungen bitte in der i4-Energie-App am Handy vornehmen.</string>
+    <string name="car_not_configured">Bitte HA-URL und Token in der Handy-App eintragen</string>
+    <string name="car_no_connection">Keine Verbindung zu Home Assistant</string>
+    <string name="car_loading">Lade Daten …</string>
+    <string name="car_no_route">Kein Ziel – Ziel in Home Assistant eingeben</string>
+    <string name="car_stand">Stand %1$s</string>
+    <string name="car_remaining">noch %1$d km</string>
+    <string name="car_up_down">↑ %1$d m ↓ %2$d m</string>
+    <string name="car_ist">Ist %1$d %%</string>
+    <string name="car_arrival">Ankunft %1$d %%</string>
+    <string name="car_plan">Plan %1$d %%</string>
+    <string name="car_bmw">BMW %1$d %%</string>
+    <string name="car_consumption">Verbrauch %1$s %%</string>
+    <string name="legend_ist">Ist</string>
+    <string name="legend_live">Live</string>
+    <string name="legend_plan">Plan</string>
+    <string name="legend_bmw">BMW</string>
+</resources>

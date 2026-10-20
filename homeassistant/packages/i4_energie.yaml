@@ -1,0 +1,334 @@
+# i4 Energie – Home Assistant package
+#
+# Creates the entities the Android Auto app reads:
+#   sensor.i4_fahrt  – current trip: start km/SOC and recorded [km, soc] points
+#   sensor.i4_route  – planned route: length, destination, elevation profile, SOC forecast
+# plus helpers to enter a destination and an automation that computes the route
+# with OpenRouteService (free API key: https://openrouteservice.org/dev/#/signup).
+#
+# Requires (see README.md in this folder):
+#   - a BMW integration providing the sensor.i4_edrive40_* / device_tracker.i4_edrive40_* entities
+#     (rename them below if your car's entities are called differently)
+#   - `ors_key: <your OpenRouteService key>` in secrets.yaml
+#
+# Entity names, labels and status texts are German, matching the app.
+
+input_text:
+  i4_ziel:
+    name: i4 Ziel                       # destination, free text (address, place, POI)
+    icon: mdi:bullseye-arrow
+    min: 0
+    max: 100
+  i4_route_status:
+    name: i4 Route Status               # result / error message of the last route calculation
+    max: 255
+
+input_select:
+  i4_routentyp:
+    name: i4 Routentyp                  # route type: fastest / shortest / avoid motorways
+    icon: mdi:routes
+    options:
+      - Schnellste
+      - Kürzeste
+      - Ohne Autobahn
+
+input_button:
+  i4_route_neu:
+    name: i4 Route neu                  # recalculate route (and reset the trip when parked)
+    icon: mdi:refresh
+
+rest_command:
+  ors_geocode:
+    url: "https://api.openrouteservice.org/geocode/search?text={{ ziel | urlencode }}&size=1&focus.point.lat={{ lat }}&focus.point.lon={{ lon }}"
+    headers:
+      Authorization: !secret ors_key
+    timeout: 20
+  ors_route:
+    url: "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
+    method: POST
+    headers:
+      Authorization: !secret ors_key
+      Content-Type: application/json
+    payload: >-
+      {"coordinates": [[{{ lon1 }},{{ lat1 }}],[{{ lon2 }},{{ lat2 }}]],
+      "elevation": true, "instructions": false, "preference": "{{ pref | default('fastest') }}"
+      {%- if avoid | default('nein') == 'ja' %}, "options": {"avoid_features": ["highways"]}{% endif %} }
+    timeout: 30
+
+template:
+  # ---------------------------------------------------------------------------
+  # Trip recorder. State = km driven since trip start.
+  # A new trip starts when
+  #   - the car starts moving after more than 15 min standstill,
+  #   - the SOC rises by more than 1 % while parked (charging), or
+  #   - the event i4_fahrt_reset is fired (route button while parked).
+  # While moving, every SOC/mileage change appends [km_since_start, soc] (max. 300 points).
+  # ---------------------------------------------------------------------------
+  - trigger:
+      - trigger: state
+        entity_id: binary_sensor.i4_edrive40_vehicle_motion_state
+        to: "on"
+        id: start
+      - trigger: state
+        entity_id:
+          - sensor.i4_edrive40_battery_hv_state_of_charge
+          - sensor.i4_edrive40_vehicle_mileage
+        id: punkt
+      - trigger: event
+        event_type: i4_fahrt_reset
+        id: reset
+    sensor:
+      - name: "i4 Fahrt"
+        unique_id: i4_fahrt
+        unit_of_measurement: km
+        state: >
+          {% set km = states('sensor.i4_edrive40_vehicle_mileage') | float(0) %}
+          {% set soc = states('sensor.i4_edrive40_battery_hv_state_of_charge') | float(0) %}
+          {% set p = this.attributes.get('punkte', []) or [] %}
+          {% set neu = trigger.id == 'reset'
+             or (trigger.id == 'start' and (trigger.from_state is none
+                 or (now() - trigger.from_state.last_changed).total_seconds() > 900
+                 or this.attributes.start_km is not defined))
+             or (trigger.id == 'punkt' and p | count > 0 and soc > (p[-1][1] | float(0)) + 1
+                 and not is_state('binary_sensor.i4_edrive40_vehicle_motion_state', 'on')) %}
+          {% set s = km if neu else this.attributes.get('start_km', km) | float(km) %}
+          {{ (km - s) | round(1) }}
+        attributes:
+          start_km: >
+            {% set km = states('sensor.i4_edrive40_vehicle_mileage') | float(0) %}
+            {% set soc = states('sensor.i4_edrive40_battery_hv_state_of_charge') | float(0) %}
+            {% set p = this.attributes.get('punkte', []) or [] %}
+            {% set neu = trigger.id == 'reset'
+               or (trigger.id == 'start' and (trigger.from_state is none
+                   or (now() - trigger.from_state.last_changed).total_seconds() > 900
+                   or this.attributes.start_km is not defined))
+               or (trigger.id == 'punkt' and p | count > 0 and soc > (p[-1][1] | float(0)) + 1
+                   and not is_state('binary_sensor.i4_edrive40_vehicle_motion_state', 'on')) %}
+            {{ km if neu else this.attributes.get('start_km', km) }}
+          start_soc: >
+            {% set soc = states('sensor.i4_edrive40_battery_hv_state_of_charge') | float(0) %}
+            {% set p = this.attributes.get('punkte', []) or [] %}
+            {% set neu = trigger.id == 'reset'
+               or (trigger.id == 'start' and (trigger.from_state is none
+                   or (now() - trigger.from_state.last_changed).total_seconds() > 900
+                   or this.attributes.start_km is not defined))
+               or (trigger.id == 'punkt' and p | count > 0 and soc > (p[-1][1] | float(0)) + 1
+                   and not is_state('binary_sensor.i4_edrive40_vehicle_motion_state', 'on')) %}
+            {{ soc if neu else this.attributes.get('start_soc', soc) }}
+          punkte: >
+            {% set km = states('sensor.i4_edrive40_vehicle_mileage') | float(0) %}
+            {% set soc = states('sensor.i4_edrive40_battery_hv_state_of_charge') | float(0) %}
+            {% set p = this.attributes.get('punkte', []) or [] %}
+            {% set neu = trigger.id == 'reset'
+               or (trigger.id == 'start' and (trigger.from_state is none
+                   or (now() - trigger.from_state.last_changed).total_seconds() > 900
+                   or this.attributes.start_km is not defined))
+               or (trigger.id == 'punkt' and p | count > 0 and soc > (p[-1][1] | float(0)) + 1
+                   and not is_state('binary_sensor.i4_edrive40_vehicle_motion_state', 'on')) %}
+            {% set s = km if neu else this.attributes.get('start_km', km) | float(km) %}
+            {% set alt = [] if neu else p %}
+            {% if is_state('binary_sensor.i4_edrive40_vehicle_motion_state', 'on') and km > 0 and soc > 0 %}
+              {{ (alt + [[ (km - s) | round(1), soc ]])[-300:] }}
+            {% else %}{{ alt }}{% endif %}
+          # Average consumption as % SOC per km (fallback capacity 80.7 kWh = i4 eDrive40 net)
+          verbrauch_pct_km: >
+            {% set cap = states('sensor.i4_edrive40_battery_hv_max_size') | float(0)
+               or states('number.i4_edrive40_manual_battery_capacity') | float(0) or 80.7 %}
+            {{ (states('sensor.i4_edrive40_range_ev_average_electric_consumption') | float(0) / cap) | round(4) }}
+          # Consumption of this trip in kWh/100 km (from SOC drop), after at least 5 km
+          fahrtverbrauch: >
+            {% set km = states('sensor.i4_edrive40_vehicle_mileage') | float(0) %}
+            {% set soc = states('sensor.i4_edrive40_battery_hv_state_of_charge') | float(0) %}
+            {% set cap = states('sensor.i4_edrive40_battery_hv_max_size') | float(0)
+               or states('number.i4_edrive40_manual_battery_capacity') | float(0) or 80.7 %}
+            {% set s = this.attributes.get('start_km', km) | float(km) %}
+            {% set ss = this.attributes.get('start_soc', soc) | float(soc) %}
+            {% set d = km - s %}
+            {{ ((ss - soc) / 100 * cap / d * 100) | round(1) if d >= 5 and ss >= soc else none }}
+
+  # ---------------------------------------------------------------------------
+  # Route. Filled by the automation below via the event i4_route.
+  # ---------------------------------------------------------------------------
+  - trigger:
+      - trigger: event
+        event_type: i4_route
+    sensor:
+      - name: "i4 Route"
+        unique_id: i4_route
+        unit_of_measurement: km
+        state: "{{ trigger.event.data.km }}"
+        attributes:
+          ziel: "{{ trigger.event.data.ziel }}"
+          aufstieg: "{{ trigger.event.data.auf }}"
+          abstieg: "{{ trigger.event.data.ab }}"
+          start_km: "{{ trigger.event.data.start_km }}"
+          profil: "{{ trigger.event.data.profil }}"        # [[km, elevation_m, lat, lon], …] ~150 points
+          prognose: "{{ trigger.event.data.prognose }}"    # [soc, …] same length as profil
+
+automation:
+  # ---------------------------------------------------------------------------
+  # Route calculation: destination or route type changed, or button pressed.
+  # 1. geocode the destination (biased to the car's position)
+  # 2. route with elevation from the car's position
+  # 3. resample to ~150 points, compute cumulative km
+  # 4. SOC forecast per segment: average consumption * distance
+  #    + climbing energy 0.0057 kWh per metre (≈ 2.1 t * g), 60 % recovered downhill
+  # ---------------------------------------------------------------------------
+  - id: i4_route_berechnen
+    alias: i4 Route berechnen
+    mode: restart
+    triggers:
+      - trigger: state
+        entity_id:
+          - input_text.i4_ziel
+          - input_select.i4_routentyp
+        id: eingabe
+      - trigger: state
+        entity_id: input_button.i4_route_neu
+        id: knopf
+    actions:
+      # Button while parked: also start a new trip
+      - if:
+          - condition: trigger
+            id: knopf
+          - condition: not
+            conditions:
+              - condition: state
+                entity_id: binary_sensor.i4_edrive40_vehicle_motion_state
+                state: "on"
+        then:
+          - event: i4_fahrt_reset
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.i4_route_status
+        data:
+          value: "⏳ Berechne Route … {{ now().strftime('%H:%M:%S') }}"
+      - if:
+          - condition: template
+            value_template: "{{ states('input_text.i4_ziel') | length < 3 }}"
+        then:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.i4_route_status
+            data:
+              value: ❌ Kein Ziel eingegeben
+          - stop: kein Ziel
+      - if:
+          - condition: template
+            value_template: "{{ state_attr('device_tracker.i4_edrive40_location', 'latitude') is none }}"
+        then:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.i4_route_status
+            data:
+              value: ❌ Keine Position vom Auto
+          - stop: keine Position
+
+      - action: rest_command.ors_geocode
+        data:
+          ziel: "{{ states('input_text.i4_ziel') }}"
+          lat: "{{ state_attr('device_tracker.i4_edrive40_location', 'latitude') }}"
+          lon: "{{ state_attr('device_tracker.i4_edrive40_location', 'longitude') }}"
+        response_variable: geo
+        continue_on_error: true
+      - if:
+          - condition: template
+            value_template: "{{ geo is not defined or geo.status != 200 }}"
+        then:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.i4_route_status
+            data:
+              value: >-
+                ❌ Zielsuche fehlgeschlagen (HTTP {{ geo.status if geo is defined else 'keine Antwort' }})
+                {{ now().strftime('%H:%M') }}
+          - stop: Geocode fehlgeschlagen
+      - variables:
+          g: "{{ geo.content if geo.content is mapping else geo.content | from_json }}"
+      - if:
+          - condition: template
+            value_template: "{{ g.features | default([]) | count == 0 }}"
+        then:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.i4_route_status
+            data:
+              value: "❌ Ziel nicht gefunden: {{ states('input_text.i4_ziel')[:100] }}"
+          - stop: Ziel nicht gefunden
+
+      - action: rest_command.ors_route
+        data:
+          lat1: "{{ state_attr('device_tracker.i4_edrive40_location', 'latitude') }}"
+          lon1: "{{ state_attr('device_tracker.i4_edrive40_location', 'longitude') }}"
+          lat2: "{{ g.features[0].geometry.coordinates[1] }}"
+          lon2: "{{ g.features[0].geometry.coordinates[0] }}"
+          pref: "{{ 'shortest' if is_state('input_select.i4_routentyp', 'Kürzeste') else 'fastest' }}"
+          avoid: "{{ 'ja' if is_state('input_select.i4_routentyp', 'Ohne Autobahn') else 'nein' }}"
+        response_variable: route
+        continue_on_error: true
+      - if:
+          - condition: template
+            value_template: "{{ route is not defined or route.status != 200 }}"
+        then:
+          - action: input_text.set_value
+            target:
+              entity_id: input_text.i4_route_status
+            data:
+              value: >-
+                ❌ Routenberechnung fehlgeschlagen (HTTP {{ route.status if route is defined else 'keine Antwort' }})
+                {{ now().strftime('%H:%M') }}
+          - stop: Route fehlgeschlagen
+
+      - variables:
+          f: "{{ (route.content if route.content is mapping else route.content | from_json).features[0] }}"
+          # Resample to ~150 points: [km, elevation, lat, lon], km scaled to the official route length
+          profil: >
+            {% set c = f.geometry.coordinates %}
+            {% set n = c | count %}
+            {% set step = [(n / 150) | int, 1] | max %}
+            {% set ns = namespace(d=0, out=[], la=c[0][1], lo=c[0][0]) %}
+            {% for i in range(0, n, step) | list + [n - 1] %}
+              {% set p = c[i] %}
+              {% set dy = (p[1] - ns.la) * 111.32 %}
+              {% set dx = (p[0] - ns.lo) * 111.32 * cos(p[1] * pi / 180) %}
+              {% set ns.d = ns.d + sqrt(dx * dx + dy * dy) %}
+              {% set ns.out = ns.out + [[ns.d, p[2], p[1] | round(5), p[0] | round(5)]] %}
+              {% set ns.la = p[1] %}{% set ns.lo = p[0] %}
+            {% endfor %}
+            {% set k = (f.properties.summary.distance / 1000) / ns.d if ns.d > 0 else 1 %}
+            {% set n2 = namespace(o=[]) %}
+            {% for q in ns.out %}{% set n2.o = n2.o + [[(q[0] * k) | round(2), q[1] | round(0), q[2], q[3]]] %}{% endfor %}
+            {{ n2.o }}
+          # SOC forecast along the profile, starting at the current SOC
+          prognose: >
+            {% set soc = states('sensor.i4_edrive40_battery_hv_state_of_charge') | float(0) %}
+            {% set cons = states('sensor.i4_edrive40_range_ev_average_electric_consumption') | float(18) / 100 %}
+            {% set cap = states('sensor.i4_edrive40_battery_hv_max_size') | float(0)
+               or states('number.i4_edrive40_manual_battery_capacity') | float(0) or 80.7 %}
+            {% set ns = namespace(s=soc, out=[soc | round(1)]) %}
+            {% for i in range(1, profil | count) %}
+              {% set dk = profil[i][0] - profil[i - 1][0] %}
+              {% set dh = profil[i][1] - profil[i - 1][1] %}
+              {% set e = cons * dk + dh * 0.0057 * (1 if dh > 0 else 0.6) %}
+              {% set ns.s = ns.s - e / cap * 100 %}
+              {% set ns.out = ns.out + [ns.s | round(1)] %}
+            {% endfor %}
+            {{ ns.out }}
+
+      - event: i4_route
+        event_data:
+          ziel: "{{ g.features[0].properties.label }}"
+          km: "{{ (f.properties.summary.distance / 1000) | round(1) }}"
+          auf: "{{ f.properties.ascent | default(0) | round(0) }}"
+          ab: "{{ f.properties.descent | default(0) | round(0) }}"
+          start_km: "{{ states('sensor.i4_edrive40_vehicle_mileage') | float(0) }}"
+          profil: "{{ profil }}"
+          prognose: "{{ prognose }}"
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.i4_route_status
+        data:
+          value: >-
+            ✅ {{ g.features[0].properties.label[:120] }} ·
+            {{ (f.properties.summary.distance / 1000) | round(0) | int }} km ·
+            {{ states('input_select.i4_routentyp') }} · {{ now().strftime('%H:%M') }}

@@ -1,0 +1,284 @@
+# i4 Energie – dashboard card (Home Assistant)
+#
+# Requires the custom card "plotly-graph" (HACS: Plotly Graph Card).
+# Add a card to a dashboard, switch to the code editor and paste this file.
+# Left: SOC over distance with elevation, plan, actual, live forecast and BMW arrival.
+# Right: route on a map.
+
+type: vertical-stack
+cards:
+  - type: grid
+    columns: 4
+    square: false
+    cards:
+      - type: tile
+        entity: sensor.i4_edrive40_battery_hv_state_of_charge
+        name: Akku
+        color: green
+      - type: tile
+        entity: sensor.i4_edrive40_range_ev_remaining_range
+        name: Reichweite
+        color: blue
+      - type: tile
+        entity: sensor.i4_route
+        name: Route
+      - type: tile
+        entity: sensor.i4_fahrt
+        name: Gefahren
+  - type: horizontal-stack
+    cards:
+      - type: custom:plotly-graph
+        hours_to_show: 1h
+        raw_plotly_config: true
+        entities:
+          - entity: ''
+            name: Höhe
+            mode: lines
+            yaxis: y2
+            fill: tozeroy
+            line:
+              color: rgba(158,158,158,0.4)
+              width: 1
+            fillcolor: rgba(158,158,158,0.12)
+            x: |
+              $fn ({ hass }) => {
+                const a = hass.states['sensor.i4_fahrt']?.attributes || {};
+                const r = hass.states['sensor.i4_route']?.attributes || {};
+                const p = a.punkte || [];
+                const last = p.length ? p[p.length - 1][0] : 0;
+                if (!r.profil || r.start_km < (a.start_km ?? 0) - 1) return [];
+                let off = r.start_km - (a.start_km ?? r.start_km);
+                if (off > last + 1) off = 0;
+                return r.profil.map(q => q[0] + off);
+              }
+            'y': |
+              $fn ({ hass }) => {
+                const a = hass.states['sensor.i4_fahrt']?.attributes || {};
+                const r = hass.states['sensor.i4_route']?.attributes || {};
+                if (!r.profil || r.start_km < (a.start_km ?? 0) - 1) return [];
+                return r.profil.map(q => q[1]);
+              }
+          - entity: ''
+            name: Prognose
+            mode: lines
+            yaxis: 'y'
+            line:
+              color: '#ff9800'
+              width: 3
+              dash: dash
+            x: |
+              $fn ({ hass }) => {
+                const a = hass.states['sensor.i4_fahrt']?.attributes || {};
+                const r = hass.states['sensor.i4_route']?.attributes || {};
+                const p = a.punkte || [];
+                const last = p.length ? p[p.length - 1][0] : 0;
+                if (r.profil && !(r.start_km < (a.start_km ?? 0) - 1)) {
+                  let off = r.start_km - (a.start_km ?? r.start_km);
+                  if (off > last + 1) off = 0;
+                  return r.profil.map(q => q[0] + off);
+                }
+                if (!p.length) return [];
+                return [0, Math.max(last, 10)];
+              }
+            'y': |
+              $fn ({ hass }) => {
+                const a = hass.states['sensor.i4_fahrt']?.attributes || {};
+                const r = hass.states['sensor.i4_route']?.attributes || {};
+                const p = a.punkte || [];
+                const last = p.length ? p[p.length - 1][0] : 0;
+                if (r.profil && r.prognose && !(r.start_km < (a.start_km ?? 0) - 1)) return r.prognose;
+                if (!p.length || a.start_soc === undefined) return [];
+                return [a.start_soc, a.start_soc - a.verbrauch_pct_km * Math.max(last, 10)];
+              }
+          - entity: ''
+            name: Ist
+            mode: lines
+            yaxis: 'y'
+            line:
+              color: '#4caf50'
+              width: 3
+              shape: hv
+            x: $ex (hass.states['sensor.i4_fahrt']?.attributes.punkte || []).map(p => p[0])
+            'y': $ex (hass.states['sensor.i4_fahrt']?.attributes.punkte || []).map(p => p[1])
+          - entity: ''
+            name: Live-Prognose
+            mode: lines
+            yaxis: 'y'
+            line:
+              color: '#a5d6a7'
+              width: 3
+              dash: dot
+            x: |
+              $fn ({ hass }) => {
+                const a = hass.states['sensor.i4_fahrt']?.attributes || {};
+                const r = hass.states['sensor.i4_route']?.attributes || {};
+                const p = a.punkte || [];
+                if (!p.length || !r.profil || !r.prognose || r.start_km < (a.start_km ?? 0) - 1) return [];
+                const last = p[p.length - 1][0], socL = p[p.length - 1][1];
+                let off = r.start_km - (a.start_km ?? r.start_km);
+                if (off > last + 1) off = 0;
+                const X = r.profil.map(q => q[0] + off), P = r.prognose;
+                if (last >= X[X.length - 1]) return [];
+                const ip = x => {
+                  if (x <= X[0]) return P[0];
+                  for (let i = 1; i < X.length; i++) if (x <= X[i])
+                    return P[i - 1] + (x - X[i - 1]) / ((X[i] - X[i - 1]) || 1) * (P[i] - P[i - 1]);
+                  return P[P.length - 1];
+                };
+                let s0 = p[0][1];
+                for (const q of p) if (q[0] <= off) s0 = q[1];
+                const pl = ip(last), soll = P[0] - pl;
+                const f = soll > 2 ? Math.min(2, Math.max(0.5, (s0 - socL) / soll)) : 1;
+                const out = [[last, socL]];
+                X.forEach((x, i) => { if (x > last) out.push([x, socL - (pl - P[i]) * f]); });
+                return out.map(o => o[0]);
+              }
+            'y': |
+              $fn ({ hass }) => {
+                const a = hass.states['sensor.i4_fahrt']?.attributes || {};
+                const r = hass.states['sensor.i4_route']?.attributes || {};
+                const p = a.punkte || [];
+                if (!p.length || !r.profil || !r.prognose || r.start_km < (a.start_km ?? 0) - 1) return [];
+                const last = p[p.length - 1][0], socL = p[p.length - 1][1];
+                let off = r.start_km - (a.start_km ?? r.start_km);
+                if (off > last + 1) off = 0;
+                const X = r.profil.map(q => q[0] + off), P = r.prognose;
+                if (last >= X[X.length - 1]) return [];
+                const ip = x => {
+                  if (x <= X[0]) return P[0];
+                  for (let i = 1; i < X.length; i++) if (x <= X[i])
+                    return P[i - 1] + (x - X[i - 1]) / ((X[i] - X[i - 1]) || 1) * (P[i] - P[i - 1]);
+                  return P[P.length - 1];
+                };
+                let s0 = p[0][1];
+                for (const q of p) if (q[0] <= off) s0 = q[1];
+                const pl = ip(last), soll = P[0] - pl;
+                const f = soll > 2 ? Math.min(2, Math.max(0.5, (s0 - socL) / soll)) : 1;
+                const out = [[last, socL]];
+                X.forEach((x, i) => { if (x > last) out.push([x, socL - (pl - P[i]) * f]); });
+                return out.map(o => o[1]);
+              }
+          - entity: ''
+            name: BMW Ankunft
+            mode: lines
+            yaxis: 'y'
+            line:
+              color: '#2196f3'
+              width: 1
+              dash: dot
+            x: |
+              $fn ({ hass }) => {
+                const p = hass.states['sensor.i4_fahrt']?.attributes.punkte || [];
+                if (!p.length) return [];
+                return [0, Math.max(p[p.length - 1][0], 10)];
+              }
+            'y': |
+              $fn ({ hass }) => {
+                const p = hass.states['sensor.i4_fahrt']?.attributes.punkte || [];
+                const z = parseFloat(hass.states['sensor.i4_edrive40_trip_battery_charge_level_at_end_of_trip']?.state);
+                return (!p.length || isNaN(z)) ? [] : [z, z];
+              }
+        layout:
+          height: 330
+          margin:
+            l: 50
+            r: 50
+            t: 10
+            b: 40
+          showlegend: false
+          font:
+            size: 14
+          dragmode: false
+          annotations: |
+            $fn ({ hass }) => {
+              const live = (() => {
+                  const a = hass.states['sensor.i4_fahrt']?.attributes || {};
+                  const r = hass.states['sensor.i4_route']?.attributes || {};
+                  const p = a.punkte || [];
+                  if (!p.length || !r.profil || !r.prognose || r.start_km < (a.start_km ?? 0) - 1) return [];
+                  const last = p[p.length - 1][0], socL = p[p.length - 1][1];
+                  let off = r.start_km - (a.start_km ?? r.start_km);
+                  if (off > last + 1) off = 0;
+                  const X = r.profil.map(q => q[0] + off), P = r.prognose;
+                  if (last >= X[X.length - 1]) return [];
+                  const ip = x => {
+                    if (x <= X[0]) return P[0];
+                    for (let i = 1; i < X.length; i++) if (x <= X[i])
+                      return P[i - 1] + (x - X[i - 1]) / ((X[i] - X[i - 1]) || 1) * (P[i] - P[i - 1]);
+                    return P[P.length - 1];
+                  };
+                  let s0 = p[0][1];
+                  for (const q of p) if (q[0] <= off) s0 = q[1];
+                  const pl = ip(last), soll = P[0] - pl;
+                  const f = soll > 2 ? Math.min(2, Math.max(0.5, (s0 - socL) / soll)) : 1;
+                  const out = [[last, socL]];
+                  X.forEach((x, i) => { if (x > last) out.push([x, socL - (pl - P[i]) * f]); });
+                  return out;
+              })();
+              const r = hass.states['sensor.i4_route']?.attributes || {};
+              const v = live.length ? live[live.length - 1][1] : (r.prognose || []).slice(-1)[0];
+              if (v === undefined) return [];
+              return [{ xref: 'paper', yref: 'paper', x: 0.99, y: 0.98, xanchor: 'right', yanchor: 'top',
+                showarrow: false, font: { size: 28, color: '#a5d6a7' }, bgcolor: 'rgba(0,0,0,0.5)',
+                text: 'Ankunft ' + Math.round(v) + ' %' }];
+            }
+          xaxis:
+            type: linear
+            autorange: true
+          yaxis:
+            side: right
+            range:
+              - 0
+              - 100
+          yaxis2:
+            overlaying: 'y'
+            side: left
+            showgrid: false
+            rangemode: tozero
+            title:
+              text: Höhe (m)
+      - type: custom:plotly-graph
+        hours_to_show: 1h
+        raw_plotly_config: true
+        entities:
+          - entity: ''
+            name: Route
+            type: scattermap
+            mode: lines
+            line:
+              color: '#2196f3'
+              width: 4
+            lat: $ex (hass.states['sensor.i4_route']?.attributes.profil || []).filter(q => q.length > 3).map(q => q[2])
+            lon: $ex (hass.states['sensor.i4_route']?.attributes.profil || []).filter(q => q.length > 3).map(q => q[3])
+          - entity: ''
+            name: Auto
+            type: scattermap
+            mode: markers
+            marker:
+              size: 14
+              color: '#4caf50'
+            lat: $ex [hass.states['device_tracker.i4_edrive40_location']?.attributes.latitude]
+            lon: $ex [hass.states['device_tracker.i4_edrive40_location']?.attributes.longitude]
+        layout:
+          height: 330
+          margin:
+            l: 0
+            r: 0
+            t: 0
+            b: 0
+          showlegend: false
+          map:
+            style: carto-darkmatter
+            center: |
+              $fn ({ hass }) => {
+                const r = (hass.states['sensor.i4_route']?.attributes.profil || []).filter(q => q.length > 3);
+                const t = hass.states['device_tracker.i4_edrive40_location']?.attributes || {};
+                if (!r.length) return { lat: t.latitude, lon: t.longitude };
+                const la = r.map(q => q[2]), lo = r.map(q => q[3]);
+                return { lat: (Math.min(...la) + Math.max(...la)) / 2, lon: (Math.min(...lo) + Math.max(...lo)) / 2 };
+              }
+            zoom: |
+              $fn ({ hass }) => {
+                const km = parseFloat(hass.states['sensor.i4_route']?.state);
+                return isNaN(km) ? 13 : Math.max(5, Math.min(13, 12.5 - Math.log2(km / 4)));
+              }

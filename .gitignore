@@ -1,0 +1,19 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+captures/
+.kotlin/
+
+# Signatur (liegt ohnehin außerhalb des Projekts)
+*.jks
+*.keystore
+keystore.properties
+
+# Persönlich, nicht veröffentlichen
+PLAY-TESTTRACK.md
+datenschutz.md
+datenschutz.html
+reddit-post.md
