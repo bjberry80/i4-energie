@@ -10,6 +10,8 @@ data class Trip(
     /** `[km_seit_start, soc]`, chronologisch. */
     val points: List<Point> = emptyList(),
     val consumption: Double? = null,
+    /** Durchschnittsverbrauch in % SOC pro km (`verbrauch_pct_km`), aus der Fahrzeug-Statistik. */
+    val avgPctPerKm: Double? = null,
 )
 
 /** Ein Eintrag aus `profil`: `[km, höhe_m, lat, lon]`. Ungültige Werte sind `null`. */
@@ -33,4 +35,6 @@ data class TripData(
     val route: Route? = null,
     val socNow: Double? = null,
     val bmwArrivalSoc: Double? = null,
+    /** Restreichweite laut Fahrzeug in km (`range_ev_remaining_range`). */
+    val bmwRangeKm: Double? = null,
 )

@@ -102,11 +102,13 @@ object HaRepository {
                 val route = async { client.state(HaParser.ENTITY_ROUTE) }
                 val soc = async { client.state(HaParser.ENTITY_SOC) }
                 val bmw = async { client.state(HaParser.ENTITY_BMW_ARRIVAL) }
+                val range = async { client.state(HaParser.ENTITY_RANGE) }
                 TripData(
                     trip = HaParser.parseTrip(trip.await()),
                     route = HaParser.parseRoute(route.await()),
                     socNow = HaParser.parseNumericState(soc.await()),
                     bmwArrivalSoc = HaParser.parseNumericState(bmw.await()),
+                    bmwRangeKm = HaParser.parseNumericState(range.await()),
                 )
             }
             _state.update {

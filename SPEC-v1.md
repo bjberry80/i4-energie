@@ -85,7 +85,7 @@ Dunkles Theme, Hintergrund `#121212`. Keine Animationen.
 - **Legende:** klein, rechts unter dem Action Strip.
 - **Action Strip:** „Aktualisieren“ (⟳) und „Einstellungen“ (⚙, öffnet einen Hinweis, dass die Einstellungen am Handy erfolgen).
 - **Leerzustände:**
-  - Keine Route: Nur Ist-Linie und Text „Kein Ziel – Ziel in Home Assistant eingeben“.
+  - Keine Route: Ist-Linie, Text „Kein Ziel – Ziel in Home Assistant eingeben“ und eine Reichweitenprognose (Issue #1, siehe unten).
   - Keine Fahrt: Nur Plan und Höhe, X ab 0, „Ankunft“ zeigt den Plan-Endwert.
   - Keine Daten oder Fehler: zentriert „Keine Verbindung zu Home Assistant“ plus „Stand hh:mm“.
 - **Schriftgrößen:** in dp skalieren, mindestens 20 dp für Achsen, 32 dp für die Kopfzeile, 40 dp für den Ankunftswert (ursprünglich 56 dp, im DHU-Test zu groß). Neu zeichnen bei `onSurfaceAvailable`, `onStableAreaChanged`, `onVisibleAreaChanged` und bei neuen Daten.
@@ -121,10 +121,26 @@ Ankunft = live.last.soc   (Fallback: prognose.last, sonst nichts)
 Verbrauch ±V % = round((f - 1) * 100), nur anzeigen wenn soll > 2
 ```
 
+**Reichweitenprognose ohne Route** (Erweiterung, GitHub-Issue #1). Gilt, wenn Ist-Punkte vorhanden sind, aber keine gültige Route (keine Route oder Route älter als die Fahrt):
+
+```
+live_slope = (SOC_erster_Punkt - SOC_letzter_Punkt) / gefahrene_km     nur wenn >= 5 km gefahren und SOC gefallen
+avg_slope  = sensor.i4_fahrt.attributes.verbrauch_pct_km               % SOC pro km, nur wenn > 0
+w          = clamp(gefahrene_km / 30, 0, 1)
+slope      = live und avg:  w * live_slope + (1 - w) * avg_slope
+             nur live:      live_slope
+             nur avg:       avg_slope
+             sonst:         SOC_letzter_Punkt / sensor.i4_edrive40_range_ev_remaining_range
+reichweite = min(SOC_letzter_Punkt / slope, 1000 km)
+linie      = [(last, SOC_letzter_Punkt), (last + reichweite, 0 %)]     Darstellung wie Live-Prognose
+```
+
+Kopfzeile statt „Ankunft N %“: „Reichweite ca. X km“. Darunter „BMW Y km“ (Restreichweite laut Fahrzeug, zum Vergleich) und „Verbrauch ±V %“ (Fahrtverbrauch gegenüber Durchschnitt, nur wenn beide vorliegen). Ohne brauchbaren Verbrauch und ohne Restreichweite entfällt die Prognose. Die App lädt dafür zusätzlich `sensor.i4_edrive40_range_ev_remaining_range`.
+
 **Unit-Tests (Pflicht):**
 - Beispiel: Route 216 km ab Fahrt-km 125, `prognose = 66 - km*0.22` in 8-km-Schritten; Ist alle 10 km mit `98 - km*0.25` bis 230 km. Erwartet: Ankunft ≈ 11 %, 15 Live-Punkte.
 - Ohne Ist-Punkte: Ankunft = letzter Prognosewert.
-- Route älter als die Fahrt (`route.start_km < fahrt.start_km - 1`): keine Plan- und keine Live-Linie.
+- Route älter als die Fahrt (`route.start_km < fahrt.start_km - 1`): keine Plan- und keine Routen-Live-Linie. Sie zählt als „keine Route“, es gilt die Reichweitenprognose unten.
 - `soll <= 2`: f = 1.
 - Kaputte oder fehlende Attribute: keine Exception.
 

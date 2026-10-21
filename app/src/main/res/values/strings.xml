@@ -35,6 +35,8 @@
     <string name="car_up_down">↑ %1$d m ↓ %2$d m</string>
     <string name="car_ist">Ist %1$d %%</string>
     <string name="car_arrival">Ankunft %1$d %%</string>
+    <string name="car_range">Reichweite ca. %1$d km</string>
+    <string name="car_bmw_range">BMW %1$d km</string>
     <string name="car_plan">Plan %1$d %%</string>
     <string name="car_bmw">BMW %1$d %%</string>
     <string name="car_consumption">Verbrauch %1$s %%</string>

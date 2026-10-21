@@ -58,10 +58,14 @@ class ForecastCalcTest {
 
         assertFalse(f.routeValid)
         assertTrue(f.plan.isEmpty())
-        assertTrue(f.live.isEmpty())
         assertTrue(f.elevation.isEmpty())
         assertNull(f.arrival)
-        assertEquals(230.0, f.xMax, 1e-9)
+        assertNull(f.planEnd)
+        // Die Route zählt als nicht vorhanden. Statt der Routen-Live-Linie gibt es die
+        // Reichweitenprognose aus dem Fahrtverbrauch: 98 -> 40,5 % auf 230 km = 0,25 %/km.
+        assertEquals(40.5 / 0.25, f.projectedRangeKm!!, 1e-6)
+        assertEquals(2, f.live.size)
+        assertEquals(230.0 + 40.5 / 0.25, f.xMax, 1e-6)
     }
 
     @Test
@@ -131,5 +135,118 @@ class ForecastCalcTest {
         assertEquals(90.0, ForecastCalc.interpolate(xs, ys, 5.0), 1e-9)
         assertEquals(75.0, ForecastCalc.interpolate(xs, ys, 15.0), 1e-9)
         assertEquals(70.0, ForecastCalc.interpolate(xs, ys, 99.0), 1e-9)
+    }
+
+    // --- Reichweitenprognose ohne Route (Issue #1) ---
+
+    private fun tripOf(vararg p: Pair<Double, Double>, avg: Double? = null) =
+        Trip(startKm = tripStart, points = p.map { Point(it.first, it.second) }, avgPctPerKm = avg)
+
+    @Test
+    fun noRoute_blendsLiveAndAverageConsumption() {
+        // 20 km gefahren, 10 % verbraucht = 0,5 %/km live; Durchschnitt 0,4 %/km; Gewicht live = 20/30
+        val f = ForecastCalc.compute(tripOf(0.0 to 90.0, 20.0 to 80.0, avg = 0.4), route = null)
+
+        val slope = (20.0 / 30.0) * 0.5 + (10.0 / 30.0) * 0.4
+        assertEquals(80.0 / slope, f.projectedRangeKm!!, 1e-6)
+        assertEquals(2, f.live.size)
+        assertEquals(Point(20.0, 80.0), f.live.first())
+        assertEquals(20.0 + 80.0 / slope, f.live.last().x, 1e-6)
+        assertEquals(0.0, f.live.last().y, 1e-9)
+        assertEquals(25, f.consumptionDeltaPct)
+        assertNull(f.arrival)
+        assertEquals(f.live.last().x, f.xMax, 1e-9)
+    }
+
+    @Test
+    fun noRoute_shortTripUsesAverageOnly() {
+        val f = ForecastCalc.compute(tripOf(0.0 to 90.0, 3.0 to 89.0, avg = 0.4), route = null)
+
+        assertEquals(89.0 / 0.4, f.projectedRangeKm!!, 1e-6)
+        assertNull(f.consumptionDeltaPct)
+    }
+
+    @Test
+    fun noRoute_longTripUsesLiveConsumption() {
+        // Ab 30 km zählt nur noch der Fahrtverbrauch: 15 % auf 30 km = 0,5 %/km
+        val f = ForecastCalc.compute(tripOf(0.0 to 90.0, 30.0 to 75.0, avg = 0.25), route = null)
+
+        assertEquals(75.0 / 0.5, f.projectedRangeKm!!, 1e-6)
+        assertEquals(100, f.consumptionDeltaPct)
+    }
+
+    @Test
+    fun noRoute_withoutConsumptionDataUsesBmwRange() {
+        val f = ForecastCalc.compute(tripOf(0.0 to 80.0), route = null, bmwRangeKm = 400.0)
+
+        assertEquals(400.0, f.projectedRangeKm!!, 1e-6)
+        assertEquals(400.0, f.bmwRangeKm!!, 1e-9)
+    }
+
+    @Test
+    fun noRoute_averageBeatsBmwRange() {
+        val f = ForecastCalc.compute(tripOf(0.0 to 80.0, avg = 0.4), route = null, bmwRangeKm = 400.0)
+
+        assertEquals(200.0, f.projectedRangeKm!!, 1e-6)
+        assertEquals(400.0, f.bmwRangeKm!!, 1e-9)
+    }
+
+    @Test
+    fun noRoute_risingSocFallsBackToAverage() {
+        // SOC steigt (Rekuperation/Rauschen): kein brauchbarer Fahrtverbrauch
+        val f = ForecastCalc.compute(tripOf(0.0 to 50.0, 20.0 to 60.0, avg = 0.5), route = null)
+
+        assertEquals(60.0 / 0.5, f.projectedRangeKm!!, 1e-6)
+        assertNull(f.consumptionDeltaPct)
+    }
+
+    @Test
+    fun noRoute_rangeIsClamped() {
+        val f = ForecastCalc.compute(tripOf(0.0 to 80.0, avg = 0.001), route = null)
+
+        assertEquals(ForecastCalc.MAX_RANGE_KM, f.projectedRangeKm!!, 1e-9)
+    }
+
+    @Test
+    fun noRoute_noUsableDataMeansNoProjection() {
+        val f = ForecastCalc.compute(tripOf(0.0 to 80.0), route = null)
+
+        assertNull(f.projectedRangeKm)
+        assertTrue(f.live.isEmpty())
+        assertNull(f.arrival)
+    }
+
+    @Test
+    fun noRoute_emptySocMeansNoProjection() {
+        val f = ForecastCalc.compute(tripOf(0.0 to 10.0, 20.0 to 0.0, avg = 0.5), route = null)
+
+        assertNull(f.projectedRangeKm)
+    }
+
+    @Test
+    fun noRoute_withoutTripPointsMeansNoProjection() {
+        val f = ForecastCalc.compute(Trip(avgPctPerKm = 0.4), route = null, bmwRangeKm = 300.0)
+
+        assertNull(f.projectedRangeKm)
+        assertFalse(f.tripRunning)
+    }
+
+    @Test
+    fun oldRoute_isTreatedLikeNoRoute() {
+        val withRoute = ForecastCalc.compute(exampleTrip(), exampleRoute(startKm = tripStart - 5))
+        val noRoute = ForecastCalc.compute(exampleTrip(), route = null)
+
+        assertFalse(withRoute.routeValid)
+        assertEquals(noRoute.projectedRangeKm!!, withRoute.projectedRangeKm!!, 1e-9)
+        assertEquals(noRoute.live, withRoute.live)
+    }
+
+    @Test
+    fun validRoute_hasNoRangeProjection() {
+        val f = ForecastCalc.compute(exampleTrip().copy(avgPctPerKm = 0.25), exampleRoute(), bmwRangeKm = 300.0)
+
+        assertNull(f.projectedRangeKm)
+        assertEquals(11.0, f.arrival!!, 1.0)
+        assertEquals(15, f.live.size)
     }
 }

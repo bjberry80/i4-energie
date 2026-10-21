@@ -82,7 +82,7 @@ class ChartRenderer(private val context: Context) {
     // --- Inhalt ---
 
     private fun drawContent(canvas: Canvas, area: RectF, data: TripData, staleText: String?) {
-        val f = ForecastCalc.compute(data.trip, data.route)
+        val f = ForecastCalc.compute(data.trip, data.route, data.bmwRangeKm)
         val bmw = data.bmwArrivalSoc?.takeIf { f.tripRunning && it in 0.0..100.0 }
 
         val pad = dp(16f)
@@ -153,17 +153,19 @@ class ChartRenderer(private val context: Context) {
         // Rechts: Ankunft + Detailzeile
         var rightW = 0f
         var rightBottom = top
-        val arrival = f.arrival
-        if (arrival != null) {
-            val arrivalText = str(R.string.car_arrival, arrival.roundToInt())
+        // Mit Route: Ankunft in %. Ohne Route: Reichweite in km bis 0 %.
+        val bigText = f.arrival?.let { str(R.string.car_arrival, it.roundToInt()) }
+            ?: f.projectedRangeKm?.let { str(R.string.car_range, it.roundToInt()) }
+        if (bigText != null) {
             val arrivalBase = top - arrivalPaint.fontMetrics.ascent * 0.9f
-            canvas.drawText(arrivalText, right, arrivalBase, arrivalPaint)
-            rightW = arrivalPaint.measureText(arrivalText)
+            canvas.drawText(bigText, right, arrivalBase, arrivalPaint)
+            rightW = arrivalPaint.measureText(bigText)
             rightBottom = arrivalBase + arrivalPaint.descent()
 
             val sub = listOfNotNull(
                 f.planEnd?.takeIf { f.live.isNotEmpty() }?.let { str(R.string.car_plan, it.roundToInt()) },
                 bmw?.let { str(R.string.car_bmw, it.roundToInt()) },
+                f.bmwRangeKm?.takeIf { f.projectedRangeKm != null }?.let { str(R.string.car_bmw_range, it.roundToInt()) },
                 f.consumptionDeltaPct?.let { str(R.string.car_consumption, signed(it)) },
             ).joinToString(SEP)
             if (sub.isNotEmpty()) {

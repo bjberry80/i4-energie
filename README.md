@@ -23,6 +23,8 @@ So I tried to rebuild it. I'm a beginner when it comes to Android, Android Auto 
 | **Grey area** | Elevation profile of the route |
 | **Header** | Destination, remaining km, ascent/descent, current SOC, predicted arrival SOC, plan vs. BMW vs. consumption deviation |
 
+**Without a route** (no destination entered), the app projects your range instead: the light green dotted line runs from the current SOC down to 0 % using your actual consumption on this trip (blended with the car's average consumption during the first 30 km), and the header shows "Reichweite ca. X km" next to the car's own remaining range for comparison. It needs `sensor.i4_edrive40_range_ev_remaining_range` in addition to the entities below.
+
 The display stays visible **while driving**: the app registers as a navigation app, a category Android Auto allows to draw its own surface. It never starts turn-by-turn guidance, so it does not compete with Google Maps or the car's built-in navigation.
 
 ## How it works
@@ -44,10 +46,11 @@ Home Assistant (your sensors)  ──REST, every 30 s──▶  Phone app  ─�
 
 | Entity | Used fields |
 |---|---|
-| `sensor.i4_fahrt` (trip) | `attributes.start_km`, `start_soc`, `punkte` = `[[km_since_start, soc], …]`, `fahrtverbrauch` |
+| `sensor.i4_fahrt` (trip) | `attributes.start_km`, `start_soc`, `punkte` = `[[km_since_start, soc], …]`, `fahrtverbrauch`, `verbrauch_pct_km` (average consumption, % SOC per km) |
 | `sensor.i4_route` | `state` = route length km, `attributes.ziel` (destination), `aufstieg`/`abstieg` (ascent/descent m), `start_km`, `profil` = `[[km, elevation_m, lat, lon], …]`, `prognose` = `[soc, …]` (same length as `profil`) |
 | `sensor.i4_edrive40_battery_hv_state_of_charge` | current SOC % |
 | `sensor.i4_edrive40_trip_battery_charge_level_at_end_of_trip` | BMW arrival SOC % (optional) |
+| `sensor.i4_edrive40_range_ev_remaining_range` | remaining range in km (optional, used without a route) |
 
 The parser is defensive: missing attributes, `null`, `"unknown"`, `"unavailable"` and numbers as strings are all tolerated.
 

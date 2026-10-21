@@ -23,6 +23,14 @@ class HaParserTest {
     }
 
     @Test
+    fun parsesAverageConsumption() {
+        val ok = HaParser.parseTrip("""{"attributes":{"verbrauch_pct_km":"0.2512"}}""")!!
+        assertEquals(0.2512, ok.avgPctPerKm!!, 1e-9)
+        assertNull(HaParser.parseTrip("""{"attributes":{"verbrauch_pct_km":"unknown"}}""")!!.avgPctPerKm)
+        assertNull(HaParser.parseTrip("""{"attributes":{}}""")!!.avgPctPerKm)
+    }
+
+    @Test
     fun parsesRoute() {
         val json = """
             {"state":"216.3","attributes":{"ziel":"Ouddorp","aufstieg":410,"abstieg":"395",

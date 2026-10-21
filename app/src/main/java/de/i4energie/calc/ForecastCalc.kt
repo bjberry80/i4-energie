@@ -22,6 +22,13 @@ data class Forecast(
     val consumptionDeltaPct: Int?,
     val routeEndKm: Double?,
     val xMax: Double,
+    /**
+     * Nur ohne gültige Route: Strecke in km ab dem letzten Ist-Punkt, bis der SOC 0 % erreicht.
+     * Die Linie dazu steckt in [live], eine Ankunft ([arrival]) gibt es dann nicht.
+     */
+    val projectedRangeKm: Double? = null,
+    /** Restreichweite laut Fahrzeug, zum Vergleich mit [projectedRangeKm]. */
+    val bmwRangeKm: Double? = null,
 ) {
     val tripRunning: Boolean get() = actual.isNotEmpty()
     val remainingKm: Double? get() = routeEndKm?.let { max(0.0, it - lastKm) }
@@ -29,10 +36,23 @@ data class Forecast(
 
 /**
  * Prognoselogik, 1:1 aus der HA-Karte (plotly) übernommen. Ohne Android-Abhängigkeit.
+ * Die Reichweitenprognose ohne Route ([projectRange]) ist eine Erweiterung der App.
  */
 object ForecastCalc {
 
-    fun compute(trip: Trip?, route: Route?): Forecast {
+    /** Ab dieser gefahrenen Strecke wird der echte Verbrauch der Fahrt in die Prognose einbezogen. */
+    const val MIN_LIVE_KM = 5.0
+
+    /** Über diese Strecke geht die Prognose vom Durchschnittsverbrauch auf den Fahrtverbrauch über. */
+    const val BLEND_KM = 30.0
+
+    /** Obergrenze für die angezeigte Reichweite, damit die X-Achse nicht ausufert. */
+    const val MAX_RANGE_KM = 1000.0
+
+    /** Ergebnis von [projectRange]. [slope] = SOC-Verbrauch in % pro km. */
+    data class Projection(val slope: Double, val rangeKm: Double, val consumptionDeltaPct: Int?)
+
+    fun compute(trip: Trip?, route: Route?, bmwRangeKm: Double? = null): Forecast {
         val actual = trip?.points.orEmpty().filter { it.x.isFinite() && it.y.isFinite() }
         val last = actual.lastOrNull()?.x ?: 0.0
 
@@ -77,8 +97,18 @@ object ForecastCalc {
             }
         }
 
-        val arrival = live.lastOrNull()?.y ?: planLast?.y
-        val xMax = maxOf(routeEnd ?: 0.0, last, 10.0)
+        // Ohne gültige Route: Reichweitenprognose bis 0 % statt Ankunft
+        var projectedRangeKm: Double? = null
+        if (!routeValid && actual.isNotEmpty()) {
+            projectRange(actual, trip?.avgPctPerKm, bmwRangeKm)?.let { p ->
+                projectedRangeKm = p.rangeKm
+                consumptionDelta = p.consumptionDeltaPct
+                live = listOf(Point(last, actual.last().y), Point(last + p.rangeKm, 0.0))
+            }
+        }
+
+        val arrival = if (projectedRangeKm != null) null else live.lastOrNull()?.y ?: planLast?.y
+        val xMax = maxOf(routeEnd ?: 0.0, last, 10.0, live.lastOrNull()?.x ?: 0.0)
 
         return Forecast(
             routeValid = routeValid,
@@ -94,7 +124,41 @@ object ForecastCalc {
             consumptionDeltaPct = consumptionDelta,
             routeEndKm = routeEnd,
             xMax = xMax,
+            projectedRangeKm = projectedRangeKm,
+            bmwRangeKm = bmwRangeKm?.takeIf { it > 0 },
         )
+    }
+
+    /**
+     * Reichweitenprognose ohne Route. Der Verbrauch (% SOC pro km) kommt aus
+     *  - dem Fahrtverbrauch (SOC-Abfall seit Fahrtbeginn), sobald mindestens [MIN_LIVE_KM] gefahren wurden,
+     *  - dem Durchschnittsverbrauch [avgPctPerKm] des Fahrzeugs,
+     *  - bei beiden gemischt: Der Fahrtverbrauch gewinnt über [BLEND_KM] km linear an Gewicht,
+     *  - ohne beide aus der Restreichweite des Fahrzeugs ([bmwRangeKm], SOC / Reichweite).
+     * `null`, wenn kein sinnvoller Verbrauch bestimmt werden kann oder der SOC schon 0 % ist.
+     */
+    fun projectRange(actual: List<Point>, avgPctPerKm: Double?, bmwRangeKm: Double?): Projection? {
+        val socL = actual.lastOrNull()?.y ?: return null
+        if (socL <= 0.0) return null
+
+        val span = actual.last().x - actual.first().x
+        val drop = actual.first().y - socL
+        val live = if (span >= MIN_LIVE_KM && drop > 0) drop / span else null
+        val avg = avgPctPerKm?.takeIf { it > 0 }
+        val fromRange = bmwRangeKm?.takeIf { it > 0 }?.let { socL / it }
+
+        val slope = when {
+            live != null && avg != null -> {
+                val w = (span / BLEND_KM).coerceIn(0.0, 1.0)
+                w * live + (1 - w) * avg
+            }
+            live != null -> live
+            avg != null -> avg
+            else -> fromRange
+        } ?: return null
+
+        val delta = if (live != null && avg != null) ((live / avg - 1) * 100).roundToInt() else null
+        return Projection(slope, (socL / slope).coerceAtMost(MAX_RANGE_KM), delta)
     }
 
     /** Lineare Interpolation von [ys] über [xs] (aufsteigend), an den Enden geklemmt. */

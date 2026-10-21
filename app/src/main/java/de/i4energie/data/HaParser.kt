@@ -17,6 +17,7 @@ object HaParser {
     const val ENTITY_ROUTE = "sensor.i4_route"
     const val ENTITY_SOC = "sensor.i4_edrive40_battery_hv_state_of_charge"
     const val ENTITY_BMW_ARRIVAL = "sensor.i4_edrive40_trip_battery_charge_level_at_end_of_trip"
+    const val ENTITY_RANGE = "sensor.i4_edrive40_range_ev_remaining_range"
 
     fun parseTrip(json: String?): Trip? {
         val obj = parseObject(json) ?: return null
@@ -31,6 +32,7 @@ object HaParser {
             startSoc = number(attrs.opt("start_soc")),
             points = points,
             consumption = number(attrs.opt("fahrtverbrauch")),
+            avgPctPerKm = number(attrs.opt("verbrauch_pct_km")),
         )
     }
 
