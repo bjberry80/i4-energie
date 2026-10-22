@@ -157,17 +157,29 @@ class ChartRenderer(private val context: Context) {
         val bigText = f.arrival?.let { str(R.string.car_arrival, it.roundToInt()) }
             ?: f.projectedRangeKm?.let { str(R.string.car_range, it.roundToInt()) }
         if (bigText != null) {
+            // Auf schmalen Anzeigen darf der rechte Block höchstens RIGHT_SHARE der Kopfzeile belegen,
+            // sonst bleibt links kein Platz für Ziel und Infos.
+            val rightLimit = (right - left) * RIGHT_SHARE
+            val normalSize = arrivalPaint.textSize
+            val fullW = arrivalPaint.measureText(bigText)
+            if (fullW > rightLimit) arrivalPaint.textSize = max(normalSize * rightLimit / fullW, dp(26f))
             val arrivalBase = top - arrivalPaint.fontMetrics.ascent * 0.9f
             canvas.drawText(bigText, right, arrivalBase, arrivalPaint)
             rightW = arrivalPaint.measureText(bigText)
             rightBottom = arrivalBase + arrivalPaint.descent()
+            arrivalPaint.textSize = normalSize
 
-            val sub = listOfNotNull(
+            val parts = listOfNotNull(
                 f.planEnd?.takeIf { f.live.isNotEmpty() }?.let { str(R.string.car_plan, it.roundToInt()) },
                 bmw?.let { str(R.string.car_bmw, it.roundToInt()) },
                 f.bmwRangeKm?.takeIf { f.projectedRangeKm != null }?.let { str(R.string.car_bmw_range, it.roundToInt()) },
                 f.consumptionDeltaPct?.let { str(R.string.car_consumption, signed(it)) },
-            ).joinToString(SEP)
+            ).toMutableList()
+            // Passt die Detailzeile nicht, fallen die hinteren Angaben weg
+            while (parts.size > 1 && subPaint.measureText(parts.joinToString(SEP)) > max(rightLimit, rightW)) {
+                parts.removeAt(parts.lastIndex)
+            }
+            val sub = parts.joinToString(SEP)
             if (sub.isNotEmpty()) {
                 val subBase = rightBottom + dp(2f) - subPaint.ascent()
                 canvas.drawText(sub, right, subBase, subPaint)
@@ -407,6 +419,9 @@ class ChartRenderer(private val context: Context) {
 
     private companion object {
         const val SEP = "  ·  "
+
+        /** Höchstanteil der Kopfzeilenbreite für den rechten Block (große Zahl + Detailzeile). */
+        const val RIGHT_SHARE = 0.55f
         val COLOR_BG = Color.parseColor("#121212")
         val COLOR_GRID = Color.parseColor("#2a2a2a")
         val COLOR_AXIS = Color.parseColor("#9e9e9e")
