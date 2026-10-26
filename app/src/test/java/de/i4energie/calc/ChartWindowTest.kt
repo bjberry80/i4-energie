@@ -17,14 +17,22 @@ class ChartWindowTest {
     )
 
     @Test
-    fun all_showsWholeTripWithFullSocAxis() {
+    fun all_showsWholeTripWithSocAxisFittedToLines() {
         val w = ChartWindow.of(actualOnly(*slowDrop), Zoom.ALL)
 
         assertEquals(0.0, w.xMin, 1e-9)
         assertEquals(50.0, w.xMax, 1e-9)
-        assertEquals(0.0, w.yMin, 1e-9)
-        assertEquals(100.0, w.yMax, 1e-9)
-        assertEquals(20.0, w.yStep, 1e-9)
+        assertEquals(75.0, w.yMin, 1e-9)
+        assertEquals(90.0, w.yMax, 1e-9)
+        assertEquals(5.0, w.yStep, 1e-9)
+    }
+
+    @Test
+    fun all_includesBmwLineInSocAxis() {
+        val w = ChartWindow.of(actualOnly(*slowDrop), Zoom.ALL, bmwSoc = 40.0)
+
+        assertTrue(w.yMin <= 40.0)
+        assertTrue(w.yMax >= 85.0)
     }
 
     @Test
@@ -83,8 +91,8 @@ class ChartWindowTest {
 
         assertEquals(0.0, w.xMin, 1e-9)
         assertEquals(20.0, w.xMax, 1e-9)
-        assertEquals(0.0, w.yMin, 1e-9)
-        assertEquals(100.0, w.yMax, 1e-9)
+        assertEquals(80.0, w.yMin, 1e-9)
+        assertEquals(95.0, w.yMax, 1e-9)
     }
 
     @Test

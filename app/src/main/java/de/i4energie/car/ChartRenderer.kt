@@ -85,8 +85,8 @@ class ChartRenderer(private val context: Context) {
 
     private fun drawContent(canvas: Canvas, area: RectF, data: TripData, staleText: String?, zoom: Zoom) {
         val f = ForecastCalc.compute(data.trip, data.route, data.bmwRangeKm)
-        val win = ChartWindow.of(f, zoom)
         val bmw = data.bmwArrivalSoc?.takeIf { f.tripRunning && it in 0.0..100.0 }
+        val win = ChartWindow.of(f, zoom, bmw)
 
         val pad = dp(16f)
         val legend = buildList {

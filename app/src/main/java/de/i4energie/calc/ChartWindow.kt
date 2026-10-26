@@ -7,7 +7,7 @@ import kotlin.math.min
 
 /** Streckenausschnitt des Diagramms, per Button in der Action Strip umschaltbar. */
 enum class Zoom(val windowKm: Double?) {
-    /** Ganze Fahrt, SOC-Achse 0 bis 100 %. */
+    /** Ganze Fahrt. */
     ALL(null),
     KM100(100.0),
     KM30(30.0),
@@ -15,7 +15,7 @@ enum class Zoom(val windowKm: Double?) {
 
 /**
  * Sichtbarer Bereich des Diagramms. X in km seit Fahrtbeginn, Y in % SOC.
- * Bei einem Zoom-Ausschnitt passt sich die SOC-Achse den sichtbaren Linien an.
+ * Die SOC-Achse passt sich den sichtbaren Linien an (ohne laufende Fahrt fest 0 bis 100 %).
  */
 data class ChartWindow(
     val xMin: Double,
@@ -31,20 +31,23 @@ data class ChartWindow(
 
         private val FULL_Y = Triple(0.0, 100.0, 20.0)
 
-        fun of(f: Forecast, zoom: Zoom): ChartWindow {
+        /**
+         * [bmwSoc] zählt nur in der Gesamtansicht zur SOC-Achse, damit die BMW-Linie dort nicht abgeschnitten wird.
+         * In den Zoom-Ausschnitten kann sie weit weg liegen und würde den Ausschnitt sinnlos strecken.
+         */
+        fun of(f: Forecast, zoom: Zoom, bmwSoc: Double? = null): ChartWindow {
             val full = f.xMax
             val w = zoom.windowKm
-            if (w == null || !f.tripRunning || w >= full) {
-                return ChartWindow(0.0, full, FULL_Y.first, FULL_Y.second, FULL_Y.third)
-            }
+            if (!f.tripRunning) return ChartWindow(0.0, full, FULL_Y.first, FULL_Y.second, FULL_Y.third)
+            if (w == null || w >= full) return withYRange(f, 0.0, full, bmwSoc)
             val lo = (f.lastKm - BEHIND_SHARE * w).coerceIn(0.0, full - w)
-            return withYRange(f, lo, lo + w)
+            return withYRange(f, lo, lo + w, null)
         }
 
-        private fun withYRange(f: Forecast, xMin: Double, xMax: Double): ChartWindow {
+        private fun withYRange(f: Forecast, xMin: Double, xMax: Double, bmwSoc: Double?): ChartWindow {
             val ys = ArrayList<Double>()
-            // Die BMW-Linie zählt nicht mit, sie kann weit weg liegen und den Ausschnitt sinnlos strecken.
             for (series in listOf(f.actual, f.plan, f.live)) collectVisible(series, xMin, xMax, ys)
+            if (bmwSoc != null) ys += bmwSoc
             if (ys.isEmpty()) return ChartWindow(xMin, xMax, FULL_Y.first, FULL_Y.second, FULL_Y.third)
 
             var lo = ys.min()
