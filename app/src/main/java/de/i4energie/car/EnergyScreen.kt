@@ -4,7 +4,6 @@ import android.graphics.Rect
 import android.util.Log
 import androidx.car.app.AppManager
 import androidx.car.app.CarContext
-import androidx.car.app.CarToast
 import androidx.car.app.Screen
 import androidx.car.app.SurfaceCallback
 import androidx.car.app.SurfaceContainer
@@ -20,6 +19,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import de.i4energie.R
+import de.i4energie.calc.Zoom
 import de.i4energie.data.HaRepository
 import de.i4energie.data.RepoState
 import kotlinx.coroutines.launch
@@ -35,6 +35,7 @@ class EnergyScreen(carContext: CarContext) : Screen(carContext) {
     private var stableArea: Rect? = null
     private var visibleArea: Rect? = null
     private var repoState: RepoState = HaRepository.state.value
+    private var zoom = Zoom.ALL
 
     private val surfaceCallback = object : SurfaceCallback {
         override fun onSurfaceAvailable(container: SurfaceContainer) {
@@ -80,15 +81,29 @@ class EnergyScreen(carContext: CarContext) : Screen(carContext) {
             .setIcon(icon(R.drawable.ic_refresh))
             .setOnClickListener { HaRepository.refresh() }
             .build()
-        val settings = Action.Builder()
-            .setIcon(icon(R.drawable.ic_settings))
+        // Die Action Strip der Navigationsvorlage erlaubt höchstens 4 Buttons.
+        val strip = ActionStrip.Builder()
+            .addAction(zoomAction(Zoom.KM30, R.string.zoom_30))
+            .addAction(zoomAction(Zoom.KM100, R.string.zoom_100))
+            .addAction(zoomAction(Zoom.ALL, R.string.zoom_all))
+            .addAction(refresh)
+            .build()
+        return NavigationTemplate.Builder().setActionStrip(strip).build()
+    }
+
+    /** Button für einen Streckenausschnitt. Der gewählte Ausschnitt ist als primäre Aktion hervorgehoben. */
+    private fun zoomAction(target: Zoom, title: Int): Action {
+        val builder = Action.Builder()
+            .setTitle(carContext.getString(title))
             .setOnClickListener {
-                CarToast.makeText(carContext, R.string.car_settings_hint, CarToast.LENGTH_LONG).show()
+                if (zoom != target) {
+                    zoom = target
+                    invalidate()
+                    render()
+                }
             }
-            .build()
-        return NavigationTemplate.Builder()
-            .setActionStrip(ActionStrip.Builder().addAction(refresh).addAction(settings).build())
-            .build()
+        if (zoom == target && carContext.carAppApiLevel >= 2) builder.setFlags(Action.FLAG_PRIMARY)
+        return builder.build()
     }
 
     private fun icon(res: Int) = CarIcon.Builder(IconCompat.createWithResource(carContext, res)).build()
@@ -105,7 +120,7 @@ class EnergyScreen(carContext: CarContext) : Screen(carContext) {
             return
         }
         try {
-            renderer.draw(canvas, area, container.dpi, repoState, System.currentTimeMillis())
+            renderer.draw(canvas, area, container.dpi, repoState, System.currentTimeMillis(), zoom)
         } catch (e: Exception) {
             // Nie abstürzen: lieber einen leeren Frame zeigen.
             Log.e(TAG, "Zeichnen fehlgeschlagen", e)

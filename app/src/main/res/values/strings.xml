@@ -24,8 +24,9 @@
 
     <!-- Auto-Display -->
     <string name="car_refresh">Aktualisieren</string>
-    <string name="car_settings">Einstellungen</string>
-    <string name="car_settings_hint">Einstellungen bitte in der i4-Energie-App am Handy vornehmen.</string>
+    <string name="zoom_all">Alles</string>
+    <string name="zoom_100">100 km</string>
+    <string name="zoom_30">30 km</string>
     <string name="car_not_configured">Bitte HA-URL und Token in der Handy-App eintragen</string>
     <string name="car_no_connection">Keine Verbindung zu Home Assistant</string>
     <string name="car_loading">Lade Daten …</string>

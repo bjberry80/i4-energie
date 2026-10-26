@@ -14,10 +14,12 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
 import de.i4energie.R
+import de.i4energie.calc.ChartWindow
 import de.i4energie.calc.Forecast
 import de.i4energie.calc.ForecastCalc
 import de.i4energie.calc.Point
 import de.i4energie.calc.TripData
+import de.i4energie.calc.Zoom
 import de.i4energie.data.RepoState
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -65,7 +67,7 @@ class ChartRenderer(private val context: Context) {
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.GERMANY)
 
-    fun draw(canvas: Canvas, area: Rect, dpi: Int, state: RepoState, now: Long) {
+    fun draw(canvas: Canvas, area: Rect, dpi: Int, state: RepoState, now: Long, zoom: Zoom = Zoom.ALL) {
         applyDensity(if (dpi > 0) dpi / 160f else context.resources.displayMetrics.density)
         canvas.drawColor(COLOR_BG)
         val box = RectF(area)
@@ -75,14 +77,15 @@ class ChartRenderer(private val context: Context) {
             data == null && state.error != null ->
                 message(canvas, box, str(R.string.car_no_connection), stand(state.lastSuccess ?: state.lastAttempt))
             data == null -> message(canvas, box, str(R.string.car_loading), null)
-            else -> drawContent(canvas, box, data, if (state.error != null) stand(state.lastSuccess) else null)
+            else -> drawContent(canvas, box, data, if (state.error != null) stand(state.lastSuccess) else null, zoom)
         }
     }
 
     // --- Inhalt ---
 
-    private fun drawContent(canvas: Canvas, area: RectF, data: TripData, staleText: String?) {
+    private fun drawContent(canvas: Canvas, area: RectF, data: TripData, staleText: String?, zoom: Zoom) {
         val f = ForecastCalc.compute(data.trip, data.route, data.bmwRangeKm)
+        val win = ChartWindow.of(f, zoom)
         val bmw = data.bmwArrivalSoc?.takeIf { f.tripRunning && it in 0.0..100.0 }
 
         val pad = dp(16f)
@@ -111,11 +114,11 @@ class ChartRenderer(private val context: Context) {
 
         if (plot.height() < dp(80f) || plot.width() < dp(120f)) return
 
-        val sx = { km: Double -> (plot.left + km / f.xMax * plot.width()).toFloat() }
-        val sy = { soc: Double -> (plot.bottom - soc / 100.0 * plot.height()).toFloat() }
+        val sx = { km: Double -> (plot.left + (km - win.xMin) / (win.xMax - win.xMin) * plot.width()).toFloat() }
+        val sy = { soc: Double -> (plot.bottom - (soc - win.yMin) / (win.yMax - win.yMin) * plot.height()).toFloat() }
 
-        drawSocGrid(canvas, plot, sy)
-        drawXAxis(canvas, plot, f.xMax, sx, area.right - pad)
+        drawSocGrid(canvas, plot, win, sy)
+        drawXAxis(canvas, plot, win.xMin, win.xMax, sx, area.right - pad)
         drawElevation(canvas, plot, f.elevation, sx)
 
         canvas.save()
@@ -131,7 +134,7 @@ class ChartRenderer(private val context: Context) {
 
         f.actual.lastOrNull()?.let {
             val cx = sx(it.x)
-            val cy = sy(it.y.coerceIn(0.0, 100.0))
+            val cy = sy(it.y.coerceIn(win.yMin, win.yMax))
             canvas.drawCircle(cx, cy, dp(10f), markerFill)
             canvas.drawCircle(cx, cy, dp(10f), markerStroke)
         }
@@ -236,25 +239,32 @@ class ChartRenderer(private val context: Context) {
         return max(leftBottom, rightBottom)
     }
 
-    private fun drawSocGrid(canvas: Canvas, plot: RectF, sy: (Double) -> Float) {
+    private fun drawSocGrid(canvas: Canvas, plot: RectF, win: ChartWindow, sy: (Double) -> Float) {
         val textOffset = -(axisPaint.ascent() + axisPaint.descent()) / 2
-        for (soc in 0..100 step 20) {
-            val y = sy(soc.toDouble())
+        var soc = win.yMin
+        while (soc <= win.yMax + 1e-9) {
+            val y = sy(soc)
             canvas.drawLine(plot.left, y, plot.right, y, gridPaint)
-            canvas.drawText("$soc %", plot.right + dp(12f), y + textOffset, axisPaint)
+            canvas.drawText("${soc.roundToInt()} %", plot.right + dp(12f), y + textOffset, axisPaint)
+            soc += win.yStep
         }
     }
 
-    private fun drawXAxis(canvas: Canvas, plot: RectF, xMax: Double, sx: (Double) -> Float, maxRight: Float) {
-        // Spec: alle 50 km (unter 100 km alle 10 km); bei wenig Platz größere Schritte.
+    private fun drawXAxis(canvas: Canvas, plot: RectF, xMin: Double, xMax: Double, sx: (Double) -> Float, maxRight: Float) {
+        // Spec: alle 50 km (unter 100 km alle 10 km); bei wenig Platz größere Schritte, im Zoom feinere.
+        val span = xMax - xMin
         val labelW = axisPaint.measureText("${xMax.roundToInt()} km") + dp(24f)
         val maxLabels = max(2, (plot.width() / labelW).toInt())
-        val minStep = if (xMax < 100) 10 else 50
-        val step = listOf(10, 20, 50, 100, 200, 500, 1000)
-            .firstOrNull { it >= minStep && xMax / it + 1 <= maxLabels } ?: 1000
+        val minStep = when {
+            span <= 40 -> 5
+            span < 100 -> 10
+            else -> 50
+        }
+        val step = listOf(5, 10, 20, 50, 100, 200, 500, 1000)
+            .firstOrNull { it >= minStep && span / it + 1 <= maxLabels } ?: 1000
         val base = plot.bottom + dp(8f) - axisPaint.ascent()
         var lastRight = Float.NEGATIVE_INFINITY
-        var km = 0
+        var km = (ceil(xMin / step) * step).toInt()
         while (km <= xMax + 1e-6) {
             val label = "$km km"
             val w = axisPaint.measureText(label)

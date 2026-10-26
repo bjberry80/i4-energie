@@ -23,6 +23,8 @@ So I tried to rebuild it. I'm a beginner when it comes to Android, Android Auto 
 | **Grey area** | Elevation profile of the route |
 | **Header** | Destination, remaining km, ascent/descent, current SOC, predicted arrival SOC, plan vs. BMW vs. consumption deviation |
 
+**Buttons** in the action strip at the top right: **30 km**, **100 km** and **Alles** (all) switch the distance window. In the zoomed views the chart shows that many km with the car a quarter from the left edge, so you see a little of the past and the forecast ahead, and the SOC axis adapts to the visible lines. The selected button is highlighted. **⟳** refreshes the data.
+
 **Without a route** (no destination entered), the app projects your range instead: the light green dotted line runs from the current SOC down to 0 % using your actual consumption on this trip (blended with the car's average consumption during the first 30 km), and the header shows "Reichweite ca. X km" next to the car's own remaining range for comparison. It needs `sensor.i4_edrive40_range_ev_remaining_range` in addition to the entities below.
 
 The display stays visible **while driving**: the app registers as a navigation app, a category Android Auto allows to draw its own surface. It never starts turn-by-turn guidance, so it does not compete with Google Maps or the car's built-in navigation.
@@ -118,7 +120,8 @@ Pitfalls learned the hard way:
 | [ForecastCalc.kt](app/src/main/java/de/i4energie/calc/ForecastCalc.kt) | Route/trip offset, plan line, live forecast, arrival, consumption deviation. Pure Kotlin, unit-tested. |
 | [HaParser.kt](app/src/main/java/de/i4energie/data/HaParser.kt) | Defensive parsing of Home Assistant state JSON |
 | [HaRepository.kt](app/src/main/java/de/i4energie/data/HaRepository.kt) | Polling, keeps the last good state on errors |
-| [EnergyScreen.kt](app/src/main/java/de/i4energie/car/EnergyScreen.kt) | `NavigationTemplate` with action strip, surface callback |
+| [EnergyScreen.kt](app/src/main/java/de/i4energie/car/EnergyScreen.kt) | `NavigationTemplate` with action strip (zoom buttons, refresh), surface callback |
+| [ChartWindow.kt](app/src/main/java/de/i4energie/calc/ChartWindow.kt) | Zoom windows and the matching SOC axis. Pure Kotlin, unit-tested. |
 | [ChartRenderer.kt](app/src/main/java/de/i4energie/car/ChartRenderer.kt) | Draws header, chart, legend and empty states on the car surface |
 | [EnergyCarAppService.kt](app/src/main/java/de/i4energie/car/EnergyCarAppService.kt) | Android Auto entry point, host validation |
 | [MainActivity.kt](app/src/main/java/de/i4energie/MainActivity.kt) | Phone settings: URL, token, connection test |

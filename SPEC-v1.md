@@ -83,7 +83,8 @@ Dunkles Theme, Hintergrund `#121212`. Keine Animationen.
   5. Live-Prognose: `#a5d6a7`, gepunktet, 5 px, vom letzten Ist-Punkt bis Routenende.
   6. Auto-Marker: Kreis am letzten Ist-Punkt.
 - **Legende:** klein, rechts unter dem Action Strip.
-- **Action Strip:** „Aktualisieren“ (⟳) und „Einstellungen“ (⚙, öffnet einen Hinweis, dass die Einstellungen am Handy erfolgen).
+- **Action Strip:** Die Navigationsvorlage erlaubt höchstens 4 Buttons. Von links nach rechts: „30 km“, „100 km“, „Alles“ (Streckenausschnitt, siehe unten) und „Aktualisieren“ (⟳). Der gewählte Ausschnitt ist als primäre Aktion hervorgehoben, Standard ist „Alles“. Der frühere Button „Einstellungen“ (⚙) entfällt, weil er nur auf das Handy verwies und der vierte Platz für die Zoom-Buttons gebraucht wird.
+- **Streckenausschnitt (Zoom):** „Alles“ zeigt die ganze Fahrt mit SOC-Achse 0 bis 100 %. „30 km“ und „100 km“ zeigen ein Fenster dieser Länge, bei dem das Auto 25 % vom linken Rand steht, der Rest zeigt die Prognose voraus. Das Fenster wird an Anfang und Ende der Strecke geklemmt und ist ohne laufende Fahrt oder bei zu kurzer Strecke gleich „Alles“. Im Zoom passt sich die SOC-Achse den sichtbaren Linien an (Ist, Plan, Live, ohne BMW-Linie): Rand von 2 Prozentpunkten, Gitter 5, 10 oder 20 %, mindestens zwei Rasterzellen, innerhalb 0 bis 100 %. Die X-Achse wird im Zoom feiner beschriftet (Schritt 5 km bei Fenstern bis 40 km).
 - **Leerzustände:**
   - Keine Route: Ist-Linie, Text „Kein Ziel – Ziel in Home Assistant eingeben“ und eine Reichweitenprognose (Issue #1, siehe unten).
   - Keine Fahrt: Nur Plan und Höhe, X ab 0, „Ankunft“ zeigt den Plan-Endwert.
